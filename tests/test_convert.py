@@ -1,3 +1,5 @@
+"""conversion API spec"""
+
 from pytest import raises, main, fixture
 from lxml import etree as ET
 from datetime import datetime
@@ -5,9 +7,15 @@ from datetime import datetime
 from ocrd_page_to_alto.convert import OcrdPageAltoConverter, NAMESPACES as _NAMESPACES
 from ocrd_utils import initLogging
 
+from .conftest import TEST_RES
+
 NAMESPACES = {**_NAMESPACES, 'alto': _NAMESPACES['alto'] % '4'}
 
-from tests.assets import Assets
+# please linter for lxml.etree contains no-member message
+# pylint:disable=I1101
+
+
+# from tests.assets import Assets
 
 # @fixture
 # def assets():
@@ -134,6 +142,39 @@ def test_convert_timestamp():
     ).convert()).encode('utf-8'))
     with raises(IndexError):
         assert tree.xpath('//alto:processingDateTime/text()', namespaces=NAMESPACES)[0]
+
+
+def test_page_with_few_content():
+    """Although PAGE with few content, 
+    it should result in more than zero blocks
+    as of 2024-06-18
+    """
+
+    # arrange
+    rather_emtpy_page = '117470_00000006.pg.xml'
+    page_path = TEST_RES / rather_emtpy_page
+    converter = OcrdPageAltoConverter(page_filename=page_path)
+    page_tree = ET.parse(page_path).getroot()
+    assert len(page_tree.findall('.//page:Page', NAMESPACES)) == 1
+    n_page_regions = len(page_tree.findall('.//page:TextRegion', NAMESPACES))
+    assert n_page_regions == 4
+    pg_uc_xpr = '//page:TextRegion/page:TextEquiv/page:Unicode/text()'
+    contents = ''.join(page_tree.xpath(pg_uc_xpr, namespaces=NAMESPACES))
+    assert contents == 'LJ'
+
+    # act
+    result_str = str(converter).encode('utf-8')
+
+    # assert
+    assert result_str is not None
+    alto_tree = ET.fromstring(result_str)
+    assert alto_tree is not None
+    alto_pages = alto_tree.findall('.//alto:Page', NAMESPACES)
+    assert len(alto_pages) == 1
+    alto_blocks = alto_tree.findall('.//alto:TexBlock', NAMESPACES)
+    assert len(alto_blocks) >= 2
+    # assert len(alto_blocks) == n_page_regions
+
 
 
 if __name__ == "__main__":
